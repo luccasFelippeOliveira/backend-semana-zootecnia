@@ -7,6 +7,7 @@ CREATE TABLE curso (
 DROP TABLE IF EXISTS participante;
 CREATE TABLE participante (
     participante_id integer PRIMARY KEY AUTOINCREMENT,
+    cpf_ra text,
     curso_id integer,
     nome text,
     instituicao text,

@@ -27,6 +27,14 @@ type Minicurso struct {
 	VagasRestantes int       `json: "vagasRestantes"`
 }
 
+type Participante struct {
+	ID          int    `json: "id"`
+	CpfRa       int    `json: "cpf_ra"`
+	CursoID     int    `json: "curso_id"`
+	Nome        string `json: "nome"`
+	Instituicao string `json: "instituicao"`
+}
+
 var (
 	db *sql.DB
 )
@@ -52,8 +60,20 @@ func dbGetCursos() []Curso {
 	return cursos
 }
 
-func dbGetMinicurso() []Minicurso {
-	rows, err := db.Query("SELECT * FROM minicurso")
+func dbGetMinicurso(dataInicio *int, dataFim *int) []Minicurso {
+	var rows *sql.Rows
+	var err error
+
+	if dataInicio == nil {
+		rows, err = db.Query("SELECT * FROM minicurso")
+	} else {
+		rows, err =
+			db.Query("SELECT * FROM minicurso"+
+				" where horario_comeco > datetime(?, \"unixepoch\", \"localtime\")"+
+				" AND horario_fim < datetime(?, \"unixepoch\", \"localtime\")"+
+				" AND vagas_restantes > 0", *dataInicio, *dataFim)
+	}
+
 	if err != nil {
 		return nil
 	}
@@ -106,11 +126,35 @@ func GetCursos(c echo.Context) error {
 }
 
 func GetMiniCursos(c echo.Context) error {
-	minicursos := dbGetMinicurso()
+	minicursos := dbGetMinicurso(nil, nil)
 	if minicursos != nil {
 		return c.JSON(http.StatusOK, minicursos)
 	}
 	return fmt.Errorf("Minicurso is null")
+}
+
+func GetMiniCursosData(c echo.Context) error {
+	// Pega horario maximo.
+	body := &struct {
+		DataInicio int
+		DataFim    int
+	}{}
+
+	if err := c.Bind(body); err != nil {
+		return err
+	}
+
+	minicursos := dbGetMinicurso(&body.DataInicio, &body.DataFim)
+	if minicursos != nil {
+		return c.JSON(http.StatusOK, minicursos)
+	}
+
+	return fmt.Errorf("minicursos is null")
+}
+
+func PostNovaInscricao(c echo.Context) error {
+
+	return nil
 }
 
 func main() {
@@ -139,6 +183,8 @@ func main() {
 
 	e.GET("/cursos", GetCursos)
 	e.GET("/minicursos", GetMiniCursos)
+	e.POST("/minicursos", GetMiniCursosData)
+	e.POST("/inscricao", PostNovaInscricao)
 
 	// Start Server
 	e.Logger.Fatal(e.Start(":1323"))
