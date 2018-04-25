@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
@@ -360,6 +361,15 @@ func PostNovaInscricao(c echo.Context) error {
 	return nil
 }
 
+func login(c echo.Context) error {
+	b, err := ioutil.ReadAll(c.Request().Body)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(b))
+	return nil
+}
+
 func main() {
 	// Echo instance
 	e := echo.New()
@@ -384,9 +394,9 @@ func main() {
 	// 	return c.JSON(http.StatusOK, cursos)
 	// })
 
-	e.GET("/cursos", GetCursos)
-	e.GET("/minicursos", GetMiniCursos)
-	e.POST("/inscricao", PostNovaInscricao)
+	e.GET("api/cursos", GetCursos)
+	e.GET("api/minicursos", GetMiniCursos)
+	e.POST("api/inscricao", PostNovaInscricao)
 
 	// Start Server
 	e.Logger.Fatal(e.Start(":1323"))
