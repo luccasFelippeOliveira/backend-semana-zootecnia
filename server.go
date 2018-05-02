@@ -3,10 +3,11 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/dgrijalva/jwt-go"
 
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -36,6 +37,7 @@ type Participante struct {
 	CursoID     int    `json:"curso_id"`
 	Nome        string `json:"nome"`
 	Instituicao string `json:"instituicao"`
+	Pago        bool   `json:"pago"`
 }
 
 type ParticpanteRequest struct {
@@ -119,7 +121,8 @@ func dbGetMinicurso() []Minicurso {
 }
 
 func dbInsereParticipante(p *Participante) (int64, error) {
-	queryString := "INSERT INTO participante(cpf_ra, curso_id, nome, instituicao) values (?, ?, ?, ?)"
+	// Por default, assume-se que o aluno nao pagou sua participacao
+	queryString := "INSERT INTO participante(cpf_ra, curso_id, nome, instituicao, pago) values (?, ?, ?, ?, 0)"
 
 	stmt, err := db.Prepare(queryString)
 	if err != nil {
@@ -228,13 +231,15 @@ func dbGetParticipante(cpfRa int) (*Participante, error) {
 		var CursoID int
 		var Nome string
 		var Instituicao string
+		var Pago bool
 
 		err := rows.Scan(
 			&ID,
 			&CpfRa,
 			&CursoID,
 			&Nome,
-			&Instituicao)
+			&Instituicao,
+			&Pago)
 
 		if err != nil {
 			return nil, err
@@ -250,6 +255,49 @@ func dbGetParticipante(cpfRa int) (*Participante, error) {
 	}
 
 	return nil, nil
+}
+
+func dbGetParticipantes() ([]Participante, error) {
+	query := "SELECT * FROM participante"
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+
+	participantes := make([]Participante, 0)
+
+	defer rows.Close()
+	for rows.Next() {
+		var iD int
+		var cpfRa int
+		var cursoID int
+		var nome string
+		var instituicao string
+		var pago bool
+
+		err := rows.Scan(
+			&iD,
+			&cpfRa,
+			&cursoID,
+			&nome,
+			&instituicao,
+			&pago)
+
+		if err != nil {
+			return nil, err
+		}
+
+		participantes = append(participantes,
+			Participante{
+				ID:          iD,
+				CpfRa:       cpfRa,
+				CursoID:     cursoID,
+				Nome:        nome,
+				Instituicao: instituicao,
+				Pago:        pago})
+	}
+	return participantes, nil
 }
 
 func atualizaVagas(m *Minicurso, p *Participante) error {
@@ -362,12 +410,88 @@ func PostNovaInscricao(c echo.Context) error {
 }
 
 func login(c echo.Context) error {
-	b, err := ioutil.ReadAll(c.Request().Body)
+	userJSON := new(struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	})
+
+	if err := c.Bind(userJSON); err != nil {
+		return err
+	}
+
+	if userJSON.Username == "admin" && userJSON.Password == "admin" {
+		// Create token
+		token := jwt.New(jwt.SigningMethodHS256)
+
+		// Set claims
+		claims := token.Claims.(jwt.MapClaims)
+		claims["name"] = "admin"
+		claims["admin"] = true
+
+		// Set expiration date
+		claims["exp"] = time.Now().Add(time.Second * 72).Unix()
+
+		// Gen the token
+		t, err := token.SignedString([]byte("supersecret"))
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, map[string]string{
+			"token": t,
+		})
+	}
+
+	return echo.ErrUnauthorized
+}
+
+func authBusinessRule(c echo.Context) error {
+	user := c.Get("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	name := claims["name"].(string)
+	admin := claims["admin"].(bool)
+
+	if admin {
+		return c.String(http.StatusOK, "Hello admin: "+name+"!")
+	}
+
+	return echo.ErrUnauthorized
+}
+
+func authGetInscricao(c echo.Context) error {
+	user := c.Get("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	admin := claims["admin"].(bool)
+
+	if !admin {
+		return echo.ErrUnauthorized
+	}
+
+	participantes, err := dbGetParticipantes()
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(b))
+
+	if participantes != nil {
+		return c.JSON(http.StatusOK, participantes)
+	}
+
+	fmt.Println("Participantes is null")
 	return nil
+}
+
+func authCheckUser(c echo.Context) error {
+	user := c.Get("user").(*jwt.Token)
+	claims := user.Claims.(jwt.MapClaims)
+	exp := claims["exp"].(float64)
+	admin := claims["admin"].(bool)
+
+	if int64(exp) >= time.Now().Unix() && !admin {
+		// Token is invalid.
+		return echo.ErrUnauthorized
+	}
+	return c.JSON(http.StatusOK, map[string]string{
+		"msg": "Ok",
+	})
 }
 
 func main() {
@@ -397,6 +521,14 @@ func main() {
 	e.GET("api/cursos", GetCursos)
 	e.GET("api/minicursos", GetMiniCursos)
 	e.POST("api/inscricao", PostNovaInscricao)
+	e.POST("api/login", login)
+
+	// Restricted api.
+	r := e.Group("/api/protected")
+	r.Use(middleware.JWT([]byte("supersecret")))
+	r.GET("/business", authBusinessRule)
+	r.GET("/check", authCheckUser)
+	r.GET("/participantes", authGetInscricao)
 
 	// Start Server
 	e.Logger.Fatal(e.Start(":1323"))

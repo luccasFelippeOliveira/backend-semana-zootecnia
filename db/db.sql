@@ -11,6 +11,7 @@ CREATE TABLE participante (
     curso_id integer,
     nome text,
     instituicao text,
+    pago integer,
     FOREIGN KEY (curso_id) REFERENCES curso(curso_id)
     ON DELETE CASCADE ON UPDATE NO ACTION
 );
@@ -42,7 +43,7 @@ DROP TABLE IF EXISTS usuario;
 CREATE TABLE usuario (
     usuario_id integer PRIMARY KEY AUTOINCREMENT,
     username text,
-    pass text
+    password text
 );
 
 INSERT INTO curso(nome) values  ('Zootecnia'),
@@ -52,7 +53,7 @@ INSERT INTO curso(nome) values  ('Zootecnia'),
                                 ('Lic. Ciências Biológicas');
 
 INSERT INTO minicurso(nome, palestrante, horario_comeco, horario_fim, vagas, vagas_restantes, qtd_horas) values
-    ('Prática comportamental em cães: avaliando situações de risco e reduzindo o estresse durante as manipulações (8h)', 'Ana Paula Ribeiro', '2018-05-16 07:30', '2018-05-16 16:30', 25, 25), 8,
+    ('Prática comportamental em cães: avaliando situações de risco e reduzindo o estresse durante as manipulações (8h)', 'Ana Paula Ribeiro', '2018-05-16 07:30', '2018-05-16 16:30', 25, 25, 8),
     ('Leite: composição x manejo', 'Bento José Ribeiro', '2018-05-16 07:30', '2018-05-16 11:30', 30, 30, 4),
     ('Ferramenta prática para formulação de ração (Turma 1)', 'Flávio Salvador', '2018-05-16 07:30', '2018-05-16 11:30', 20, 20,4 ),
     ('Boas práticas na colheita, extração e beneficiamento do mel', 'José Antônio Bessa', '2018-05-16 07:30', '2018-05-16 11:30', 25, 25, 4),
@@ -66,4 +67,4 @@ INSERT INTO minicurso(nome, palestrante, horario_comeco, horario_fim, vagas, vag
     ('Avaliação da qualidade de carnes', 'Lucas Arantes Pereira', '2018-05-17 12:30', '2018-05-17 16:30', 25, 25, 4),
     ('Forragicultura', '', '2018-05-17 12:30', '2018-05-17 16:30', 25, 25, 4);
 
-INSERT INTO usuario(username, pass) values ('admin', 'admin');
+INSERT INTO usuario(username, password) values ('admin', 'admin');
