@@ -142,6 +142,35 @@ func dbInsereParticipante(p *Participante) (int64, error) {
 	return id, err
 }
 
+func dbAtualizaParticipante(p *Participante) error {
+	query := "UPDATE participante SET pago = ? where participante_id = ?"
+
+	stmt, err := db.Prepare(query)
+	if err != nil {
+		return err
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
+	pago := 0
+	if p.Pago {
+		pago = 1
+	}
+
+	_, err = tx.Stmt(stmt).Exec(pago, p.ID)
+	if err != nil {
+		fmt.Println("Rollback dbAtualizaParticipante")
+		tx.Rollback()
+	} else {
+		tx.Commit()
+	}
+
+	return nil
+}
+
 func dbAtualizaVaga(m *Minicurso) error {
 	query := "UPDATE minicurso SET vagas_restantes = vagas_restantes - 1	WHERE minicurso_id = ?"
 
@@ -218,6 +247,49 @@ func dbGetParticipante(cpfRa int) (*Participante, error) {
 	query := "SELECT * FROM participante WHERE cpf_ra = ?"
 
 	rows, err := db.Query(query, cpfRa)
+	if err != nil {
+		return nil, err
+	}
+
+	participante := new(Participante)
+
+	defer rows.Close()
+	for rows.Next() {
+		var ID int
+		var CpfRa int
+		var CursoID int
+		var Nome string
+		var Instituicao string
+		var Pago bool
+
+		err := rows.Scan(
+			&ID,
+			&CpfRa,
+			&CursoID,
+			&Nome,
+			&Instituicao,
+			&Pago)
+
+		if err != nil {
+			return nil, err
+		}
+
+		participante.ID = ID
+		participante.CpfRa = CpfRa
+		participante.CursoID = CursoID
+		participante.Nome = Nome
+		participante.Instituicao = Instituicao
+
+		return participante, nil
+	}
+
+	return nil, nil
+}
+
+func dbGetParticipanteId(id int) (*Participante, error) {
+	query := "SELECT * FROM participante WHERE participante_id = ?"
+
+	rows, err := db.Query(query, id)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +501,7 @@ func login(c echo.Context) error {
 		claims["admin"] = true
 
 		// Set expiration date
-		claims["exp"] = time.Now().Add(time.Second * 72).Unix()
+		claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
 
 		// Gen the token
 		t, err := token.SignedString([]byte("supersecret"))
@@ -494,11 +566,50 @@ func authCheckUser(c echo.Context) error {
 	})
 }
 
+func mudaPagamento(id int, foiPago bool) error {
+	p, err := dbGetParticipanteId(id)
+	if err != nil {
+		return err
+	}
+
+	if p == nil {
+		return fmt.Errorf("Nao encontrou participante id = %d", id)
+	}
+
+	p.Pago = foiPago
+
+	// Atualiza pagamento.
+	err = dbAtualizaParticipante(p)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func authFazPagamento(c echo.Context) error {
+	id, _ := strconv.Atoi(c.Param("id"))
+	err := mudaPagamento(id, true)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func authDesfazPagamento(c echo.Context) error {
+	id, _ := strconv.Atoi(c.Param("id"))
+	err := mudaPagamento(id, false)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func main() {
 	// Echo instance
 	e := echo.New()
 
-	openDB, err := sql.Open("sqlite3", "./db/semana-zoo.db")
+	openDB, err := sql.Open("sqlite3", "./db/semana-zootecnia.db")
 	if err != nil {
 		e.Logger.Fatalf("Can't open databasa %e", err)
 	}
@@ -529,6 +640,8 @@ func main() {
 	r.GET("/business", authBusinessRule)
 	r.GET("/check", authCheckUser)
 	r.GET("/participantes", authGetInscricao)
+	r.PUT("/fazpagamento/:id", authFazPagamento)
+	r.PUT("/desfazpagamento/:id", authDesfazPagamento)
 
 	// Start Server
 	e.Logger.Fatal(e.Start(":1323"))
